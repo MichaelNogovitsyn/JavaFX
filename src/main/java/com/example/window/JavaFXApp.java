@@ -23,6 +23,7 @@ public class JavaFXApp extends Application {
     private Timeline timeline;
     private XYChart.Series<String, Number> series;
     private XYChart.Series<String, Number> horizontalLine;
+    private XYChart.Series<String, Number> arrowsSeries;
     private final Random random = new Random();
     private final Queue<String> timeLabels = new LinkedList<>();
     private static final int MAX_DATA_POINTS = 20;
@@ -36,6 +37,7 @@ public class JavaFXApp extends Application {
         // Панель ботов слева
         VBox botsPanel = new VBox(10);
         botsPanel.setPrefWidth(140);
+        botsPanel.setPrefHeight(600); // Ограничение высоты
         botsPanel.getChildren().add(new Label("Bots"));
         for (int i = 1; i <= 4; i++) {
             VBox botBox = new VBox(5);
@@ -82,32 +84,6 @@ public class JavaFXApp extends Application {
             }
         });
 
-        // Нижняя панель
-        HBox bottomPanel = new HBox(10);
-        TextField textField1 = new TextField();
-        TextField textField2 = new TextField();
-        Button updateLineButton = new Button("Update Line");
-
-        updateLineButton.setOnAction(e -> {
-            try {
-                currentHorizontalLineValue = Double.parseDouble(textField1.getText());
-            } catch (NumberFormatException ex) {
-                textField1.setText("Invalid");
-            }
-        });
-
-        bottomPanel.getChildren().addAll(textField1, textField2, updateLineButton);
-        for (int i = 1; i <= 5; i++) {
-            bottomPanel.getChildren().add(new Button("Button " + i));
-        }
-        // Перемещение слайдера в правую панель
-        VBox rightPanel = new VBox(10);
-        rightPanel.getChildren().addAll(speedSlider, new Label("Speed Control"));
-        root.setRight(rightPanel);
-
-        bottomPanel.setPadding(new Insets(10, 10, 20, 10));
-        root.setBottom(bottomPanel);
-
         // График в центре
         NumberAxis yAxis = new NumberAxis();
         CategoryAxis xAxis = new CategoryAxis();
@@ -117,8 +93,9 @@ public class JavaFXApp extends Application {
         LineChart<String, Number> lineChart = new LineChart<>(xAxis, yAxis);
         series = new XYChart.Series<>();
         horizontalLine = new XYChart.Series<>();
-        lineChart.getData().addAll(series, horizontalLine);
-        lineChart.setMaxHeight(800);
+        arrowsSeries = new XYChart.Series<>();
+        lineChart.getData().addAll(series, horizontalLine, arrowsSeries);
+        lineChart.setMaxHeight(650); // Ограничение высоты графика
 
         // Масштабирование графика при прокрутке после клика
         lineChart.setOnMouseClicked(e -> lineChart.requestFocus());
@@ -131,26 +108,33 @@ public class JavaFXApp extends Application {
             }
         });
 
-        // Перемещение графика при зажатой левой кнопке мыши
-        final double[] dragStartY = {0};
-        lineChart.setOnMousePressed(event -> {
-            if (event.isPrimaryButtonDown()) {
-                dragStartY[0] = event.getY();
-            }
-        });
+        // Панель с кнопками (размещена под графиком)
+        HBox buttonPanel = new HBox(10);
+        buttonPanel.setPadding(new Insets(10));
+        buttonPanel.setStyle("-fx-background-color: lightgray;");
 
-        lineChart.setOnMouseDragged(event -> {
-            if (event.isPrimaryButtonDown()) {
-                double deltaY = event.getY() - dragStartY[0];
-                double shift = (yAxis.getUpperBound() - yAxis.getLowerBound()) * deltaY / lineChart.getHeight();
-                yAxis.setAutoRanging(false);
-                yAxis.setUpperBound(yAxis.getUpperBound() - shift);
-                yAxis.setLowerBound(yAxis.getLowerBound() - shift);
-                dragStartY[0] = event.getY();
-            }
-        });
+        for (int i = 1; i <= 5; i++) {
+            Button button = new Button("Button " + i);
+            int index = i;
+            button.setOnAction(e -> {
+                String currentTime = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+                double price = 10 + random.nextInt(50);
+                drawArrows(currentTime, price);
+                System.out.println("Button " + index + " clicked: Arrows added at " + price);
+            });
+            buttonPanel.getChildren().add(button);
+        }
 
-        root.setCenter(lineChart);
+        // Центр: график + кнопки
+        VBox centerPanel = new VBox(10);
+        centerPanel.getChildren().addAll(lineChart, buttonPanel);
+        root.setCenter(centerPanel);
+
+        // Правая панель со слайдером
+        VBox rightPanel = new VBox(10);
+        rightPanel.setPrefHeight(600);
+        rightPanel.getChildren().addAll(speedSlider, new Label("Speed Control"));
+        root.setRight(rightPanel);
 
         // Запуск обновления графика
         timeline = new Timeline(new KeyFrame(Duration.seconds(1), event -> updateChart()));
@@ -163,15 +147,40 @@ public class JavaFXApp extends Application {
 
     private void updateChart() {
         String currentTime = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
-        series.getData().add(new XYChart.Data<>(currentTime, 10 + random.nextInt(50)));
+        double price = 10 + random.nextInt(50);
+
+        series.getData().add(new XYChart.Data<>(currentTime, price));
         horizontalLine.getData().add(new XYChart.Data<>(currentTime, currentHorizontalLineValue));
+        arrowsSeries.getData().add(new XYChart.Data<>(currentTime, price)); // Добавляем стрелки
+
         timeLabels.add(currentTime);
 
+        // Удаляем старые точки только если их количество превышает лимит
         if (series.getData().size() > MAX_DATA_POINTS) {
-            series.getData().remove(0);
-            horizontalLine.getData().remove(0);
+            if (!series.getData().isEmpty()) series.getData().remove(0);
+            if (!horizontalLine.getData().isEmpty()) horizontalLine.getData().remove(0);
+            if (!arrowsSeries.getData().isEmpty()) arrowsSeries.getData().remove(0);
             timeLabels.poll();
         }
+    }
+
+    private void drawArrows(String time, double price) {
+        XYChart.Data<String, Number> redArrow = new XYChart.Data<>(time, price + 2);
+        redArrow.setNode(createArrowNode("🔻", "red"));
+
+        XYChart.Data<String, Number> greenArrow = new XYChart.Data<>(time, price - 2);
+        greenArrow.setNode(createArrowNode("🔺", "green"));
+
+        arrowsSeries.getData().addAll(redArrow, greenArrow);
+    }
+
+    private StackPane createArrowNode(String arrow, String color) {
+        Label label = new Label(arrow);
+        label.setStyle("-fx-text-fill: " + color + "; -fx-font-size: 16px;");
+
+        StackPane stackPane = new StackPane();
+        stackPane.getChildren().add(label);
+        return stackPane;
     }
 
     public static void main(String[] args) {
